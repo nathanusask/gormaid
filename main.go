@@ -83,6 +83,44 @@ func squeeze(s string, c byte) string {
 	return string(res)
 }
 
+const testGoFile = `package main
+
+type StructA struct {
+	A int
+	B int
+	C string
+}
+
+type StructB struct {
+	A uint
+	B int8
+	C []byte
+}
+`
+
+func FindStructBlock(structName string, fileContent string) string {
+	pattern := fmt.Sprintf("type\\s+%s\\s+struct\\s+{", structName)
+	if matched, _ := regexp.MatchString(pattern, fileContent); !matched {
+		return ""
+	}
+	s := regexp.MustCompile(pattern).FindString(fileContent)
+	height := 1
+	start := strings.Index(fileContent, s)
+	end := start + len(s)
+	for _, b := range []byte(fileContent)[start+len(s):] {
+		if b == '{' {
+			height++
+		} else if b == '}' {
+			height--
+		}
+		end++
+		if height == 0 {
+			break
+		}
+	}
+	return fileContent[start : end+1]
+}
+
 func ParseStructBlock(strStruct string) *StructInfo {
 	lines := strings.Split(strStruct, "\n")
 	structInfo := &StructInfo{
@@ -156,4 +194,10 @@ func main() {
 		structInfo := ParseStructBlock(testStruct)
 		fmt.Println(*structInfo)
 	}
+
+	sa := FindStructBlock("StructA", testGoFile)
+	fmt.Println(sa)
+	fmt.Println()
+	sb := FindStructBlock("StructB", testGoFile)
+	fmt.Println(sb)
 }
