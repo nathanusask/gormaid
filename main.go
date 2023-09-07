@@ -25,7 +25,7 @@ func (fi FieldInfo) String() string {
 }
 
 type StructInfo struct {
-	StrucName     string
+	StructName    string
 	FieldInfo     []FieldInfo
 	UniqueIndices map[string][]string
 	PrimaryKeys   []string
@@ -33,7 +33,7 @@ type StructInfo struct {
 }
 
 func (si StructInfo) String() string {
-	s := fmt.Sprintln(si.StrucName)
+	s := fmt.Sprintln(si.StructName)
 	for _, fi := range si.FieldInfo {
 		s += fmt.Sprintln(fi)
 	}
@@ -91,7 +91,7 @@ func main() {
 		for _, line := range lines {
 			if matched, _ := regexp.MatchString(`type\s+\w+\s+struct`, line); matched {
 				structName := strings.TrimSpace(strings.TrimLeft(strings.TrimRight(regexp.MustCompile(`type\s+\w+\s+struct`).FindString(line), "struct"), "type"))
-				structInfo.StrucName = structName
+				structInfo.StructName = structName
 				continue
 			}
 			trimmed := strings.TrimSpace(line)
