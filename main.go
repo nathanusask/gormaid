@@ -26,7 +26,7 @@ func (fi FieldInfo) String() string {
 
 type StructInfo struct {
 	StructName    string
-	FieldInfo     []FieldInfo
+	FieldInfo     []*FieldInfo
 	UniqueIndices map[string][]string
 	PrimaryKeys   []string
 	ColumnMap     map[string]string
@@ -79,70 +79,75 @@ func squeeze(s string, c byte) string {
 	return string(res)
 }
 
-func main() {
-	for _, testStruct := range testStructs {
-		lines := strings.Split(testStruct, "\n")
-		structInfo := StructInfo{
-			FieldInfo:     []FieldInfo{},
-			UniqueIndices: make(map[string][]string),
-			PrimaryKeys:   []string{},
-			ColumnMap:     make(map[string]string),
+func ParseStructBlock(strStruct string) *StructInfo {
+	lines := strings.Split(strStruct, "\n")
+	structInfo := &StructInfo{
+		FieldInfo:     []*FieldInfo{},
+		UniqueIndices: make(map[string][]string),
+		PrimaryKeys:   []string{},
+		ColumnMap:     make(map[string]string),
+	}
+	for _, line := range lines {
+		if matched, _ := regexp.MatchString(`type\s+\w+\s+struct`, line); matched {
+			structName := strings.TrimSpace(strings.TrimLeft(strings.TrimRight(regexp.MustCompile(`type\s+\w+\s+struct`).FindString(line), "struct"), "type"))
+			structInfo.StructName = structName
+			continue
 		}
-		for _, line := range lines {
-			if matched, _ := regexp.MatchString(`type\s+\w+\s+struct`, line); matched {
-				structName := strings.TrimSpace(strings.TrimLeft(strings.TrimRight(regexp.MustCompile(`type\s+\w+\s+struct`).FindString(line), "struct"), "type"))
-				structInfo.StructName = structName
-				continue
-			}
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "//") || strings.HasSuffix(trimmed, "/*") || strings.HasPrefix(trimmed, "*/") || strings.HasSuffix(trimmed, "}") {
-				continue
-			}
-			splits := strings.Split(squeeze(trimmed, ' '), " ")
-			if len(splits) == 1 {
-				continue
-			}
-			fieldname, fieldtype := splits[0], splits[1]
-			fieldInfo := FieldInfo{
-				FieldName: fieldname,
-				FieldType: fieldtype,
-			}
-			if matched, _ := regexp.MatchString(`gorm:"-[^"]*"`, line); matched {
-				fieldInfo.Ignored = true
-				continue
-			}
-			if matched, _ := regexp.MatchString(`gorm:"[^"]+"`, line); matched {
-				gormInfo := strings.TrimSpace(regexp.MustCompile(`gorm:"[^"]+"`).FindString(line))
-				gormInfo = strings.TrimSpace(gormInfo[6 : len(gormInfo)-1])
-				gormInfos := strings.Split(gormInfo, ";")
-				for _, gi := range gormInfos {
-					if trmd := strings.ToLower(strings.TrimSpace(gi)); trmd != "" {
-						if strings.Contains(trmd, ":") {
-							splts := strings.Split(trmd, ":")
-							k, v := splts[0], splts[1]
-							if k == "uniqueindex" {
-								if _, ok := structInfo.UniqueIndices[v]; !ok {
-									structInfo.UniqueIndices[v] = []string{}
-								}
-								structInfo.UniqueIndices[v] = append(structInfo.UniqueIndices[v], fieldname)
-							} else if k == "column" {
-								structInfo.ColumnMap[fieldname] = v
-							} else if k == "foreignkey" {
-								fieldInfo.External = true
-								break
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "//") || strings.HasSuffix(trimmed, "/*") || strings.HasPrefix(trimmed, "*/") || strings.HasSuffix(trimmed, "}") {
+			continue
+		}
+		splits := strings.Split(squeeze(trimmed, ' '), " ")
+		if len(splits) == 1 {
+			continue
+		}
+		fieldname, fieldtype := splits[0], splits[1]
+		fieldInfo := &FieldInfo{
+			FieldName: fieldname,
+			FieldType: fieldtype,
+		}
+		if matched, _ := regexp.MatchString(`gorm:"-[^"]*"`, line); matched {
+			fieldInfo.Ignored = true
+			continue
+		}
+		if matched, _ := regexp.MatchString(`gorm:"[^"]+"`, line); matched {
+			gormInfo := strings.TrimSpace(regexp.MustCompile(`gorm:"[^"]+"`).FindString(line))
+			gormInfo = strings.TrimSpace(gormInfo[6 : len(gormInfo)-1])
+			gormInfos := strings.Split(gormInfo, ";")
+			for _, gi := range gormInfos {
+				if trmd := strings.ToLower(strings.TrimSpace(gi)); trmd != "" {
+					if strings.Contains(trmd, ":") {
+						splts := strings.Split(trmd, ":")
+						k, v := splts[0], splts[1]
+						if k == "uniqueindex" {
+							if _, ok := structInfo.UniqueIndices[v]; !ok {
+								structInfo.UniqueIndices[v] = []string{}
 							}
-						} else {
-							if trmd == "uniqueindex" {
-								structInfo.UniqueIndices[fieldname] = []string{fieldname}
-							} else if trmd == "primarykey" {
-								structInfo.PrimaryKeys = append(structInfo.PrimaryKeys, fieldname)
-							}
+							structInfo.UniqueIndices[v] = append(structInfo.UniqueIndices[v], fieldname)
+						} else if k == "column" {
+							structInfo.ColumnMap[fieldname] = v
+						} else if k == "foreignkey" {
+							fieldInfo.External = true
+							break
+						}
+					} else {
+						if trmd == "uniqueindex" {
+							structInfo.UniqueIndices[fieldname] = []string{fieldname}
+						} else if trmd == "primarykey" {
+							structInfo.PrimaryKeys = append(structInfo.PrimaryKeys, fieldname)
 						}
 					}
 				}
 			}
-			structInfo.FieldInfo = append(structInfo.FieldInfo, fieldInfo)
 		}
-		fmt.Printf("%+v", structInfo)
+		structInfo.FieldInfo = append(structInfo.FieldInfo, fieldInfo)
+	}
+	return structInfo
+}
+
+func main() {
+	for _, testStruct := range testStructs {
+		structInfo := ParseStructBlock(testStruct)
+		fmt.Println(*structInfo)
 	}
 }
