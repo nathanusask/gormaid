@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 
 	"gorm.io/gorm/schema"
 )
@@ -217,6 +218,8 @@ func ParseStructBlock(strStruct string) *StructInfo {
 							fieldInfo.External = true
 							delete(structInfo.ColumnMap, fieldname)
 							break
+						} else if k == "embedded" {
+							// TODO: complete this section
 						} else if k == "embeddedprefix" {
 							// TODO: complete this section
 						}
@@ -235,7 +238,7 @@ func ParseStructBlock(strStruct string) *StructInfo {
 	return structInfo
 }
 
-func main() {
+func test() {
 	for _, testStruct := range testStructs {
 		structInfo := ParseStructBlock(RemoveComments(testStruct))
 		fmt.Println(*structInfo)
@@ -251,4 +254,20 @@ func main() {
 	fmt.Println()
 	structB := ParseStructBlock(sb)
 	fmt.Println(*structB)
+}
+
+func GetGormColumns(a any) (map[string]*schema.Field, error) {
+	s, err := schema.Parse(a, &sync.Map{}, schema.NamingStrategy{})
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range s.FieldsByDBName {
+		fmt.Printf("%+v\n", f)
+	}
+	return s.FieldsByDBName, nil
+}
+
+func main() {
+	//test()
+	_, _ = GetGormColumns(&Transfer{})
 }

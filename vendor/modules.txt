@@ -6,6 +6,7 @@ github.com/jinzhu/inflection
 github.com/jinzhu/now
 # gorm.io/gorm v1.25.4
 ## explicit; go 1.16
+gorm.io/gorm
 gorm.io/gorm/clause
 gorm.io/gorm/logger
 gorm.io/gorm/schema
