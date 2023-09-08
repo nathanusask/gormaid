@@ -85,18 +85,48 @@ func squeeze(s string, c byte) string {
 
 const testGoFile = `package main
 
+// StrucA is a struct
 type StructA struct {
 	A int
-	B int
+	B int /*comments*/
 	C string
 }
 
+/*
+comments
+comments
+//
+*/
 type StructB struct {
-	A uint
-	B int8
+	A uint // comments
+	B int8 // comments
 	C []byte
 }
 `
+
+// RemoveComments removes non-code
+func RemoveComments(content string) string {
+	var res []string
+	// remove comments enclosed by /**/
+	if strings.Contains(content, "/*") && strings.Contains(content, "*/") {
+		open := strings.Index(content, "/*")
+		for open >= 0 {
+			content = content[:open] + content[strings.Index(content, "*/")+2:]
+			open = strings.Index(content, "/*")
+		}
+	}
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, "//") {
+			trimmed = strings.TrimSpace(trimmed[:strings.LastIndex(trimmed, "//")])
+		}
+		if trimmed == "" {
+			continue
+		}
+		res = append(res, trimmed)
+	}
+	return strings.Join(res, "\n")
+}
 
 func FindStructBlock(structName string, fileContent string) string {
 	pattern := fmt.Sprintf("type\\s+%s\\s+struct\\s+{", structName)
@@ -113,15 +143,21 @@ func FindStructBlock(structName string, fileContent string) string {
 		} else if b == '}' {
 			height--
 		}
-		end++
 		if height == 0 {
 			break
 		}
+		end++
 	}
 	return fileContent[start : end+1]
 }
 
 func ParseStructBlock(strStruct string) *StructInfo {
+	fieldNameProcess := func(fn string) string {
+		if strings.Contains(fn, ".") {
+			fn = fn[strings.LastIndex(fn, ".")+1:]
+		}
+		return fn
+	}
 	lines := strings.Split(strStruct, "\n")
 	structInfo := &StructInfo{
 		FieldInfo:     []*FieldInfo{},
@@ -129,32 +165,40 @@ func ParseStructBlock(strStruct string) *StructInfo {
 		PrimaryKeys:   []string{},
 		ColumnMap:     make(map[string]string),
 	}
+	regexTag := regexp.MustCompile("`.*`")
 	for _, line := range lines {
 		if matched, _ := regexp.MatchString(`type\s+\w+\s+struct`, line); matched {
 			structName := strings.TrimSpace(strings.TrimLeft(strings.TrimRight(regexp.MustCompile(`type\s+\w+\s+struct`).FindString(line), "struct"), "type"))
 			structInfo.StructName = structName
 			continue
 		}
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "//") || strings.HasSuffix(trimmed, "/*") || strings.HasPrefix(trimmed, "*/") || strings.HasSuffix(trimmed, "}") {
+		var tag, trimmed string
+		if tag = regexTag.FindString(line); tag != "" {
+			trimmed = strings.TrimSpace(strings.ReplaceAll(line, tag, ""))
+		} else {
+			trimmed = strings.TrimSpace(line)
+		}
+		if trimmed == "" || strings.HasSuffix(trimmed, "}") {
 			continue
 		}
 		splits := strings.Split(squeeze(trimmed, ' '), " ")
-		if len(splits) == 1 {
-			continue
+		var fieldname, fieldtype string
+		if len(splits) == 2 {
+			fieldname, fieldtype = splits[0], splits[1]
+		} else if len(splits) == 1 {
+			fieldname, fieldtype = fieldNameProcess(splits[0]), splits[0]
 		}
-		fieldname, fieldtype := splits[0], splits[1]
 		fieldInfo := &FieldInfo{
 			FieldName: fieldname,
 			FieldType: fieldtype,
 		}
-		if matched, _ := regexp.MatchString(`gorm:"-[^"]*"`, line); matched {
+		if matched, _ := regexp.MatchString(`gorm:"-[^"]*"`, tag); matched {
 			fieldInfo.Ignored = true
 			continue
 		}
-		if matched, _ := regexp.MatchString(`gorm:"[^"]+"`, line); matched {
+		if matched, _ := regexp.MatchString(`gorm:"[^"]+"`, tag); matched {
 			structInfo.ColumnMap[fieldname] = ns.ColumnName(structInfo.StructName, fieldname)
-			gormInfo := strings.TrimSpace(regexp.MustCompile(`gorm:"[^"]+"`).FindString(line))
+			gormInfo := strings.TrimSpace(regexp.MustCompile(`gorm:"[^"]+"`).FindString(tag))
 			gormInfo = strings.TrimSpace(gormInfo[6 : len(gormInfo)-1])
 			gormInfos := strings.Split(gormInfo, ";")
 			for _, gi := range gormInfos {
@@ -173,6 +217,8 @@ func ParseStructBlock(strStruct string) *StructInfo {
 							fieldInfo.External = true
 							delete(structInfo.ColumnMap, fieldname)
 							break
+						} else if k == "embeddedprefix" {
+							// TODO: complete this section
 						}
 					} else {
 						if trmd == "uniqueindex" {
@@ -191,13 +237,18 @@ func ParseStructBlock(strStruct string) *StructInfo {
 
 func main() {
 	for _, testStruct := range testStructs {
-		structInfo := ParseStructBlock(testStruct)
+		structInfo := ParseStructBlock(RemoveComments(testStruct))
 		fmt.Println(*structInfo)
 	}
 
-	sa := FindStructBlock("StructA", testGoFile)
+	sa := FindStructBlock("StructA", RemoveComments(testGoFile))
 	fmt.Println(sa)
 	fmt.Println()
-	sb := FindStructBlock("StructB", testGoFile)
+	structA := ParseStructBlock(sa)
+	fmt.Println(*structA)
+	sb := FindStructBlock("StructB", RemoveComments(testGoFile))
 	fmt.Println(sb)
+	fmt.Println()
+	structB := ParseStructBlock(sb)
+	fmt.Println(*structB)
 }
